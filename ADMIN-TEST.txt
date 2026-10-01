@@ -1,0 +1,1 @@
+// In the browser console, run: go('admin') to open the admin page.

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: alph-ai-moteur
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: OPENAI_MODEL
+        value: gpt-6-luna
+      - key: FRONTEND_URL
+        value: https://bsslg.github.io
