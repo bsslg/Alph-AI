@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b1020">
+  <title>ALPH AI</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0b1020;
+      color: white;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 20px;
+      background: #11182b;
+      border-bottom: 1px solid #26304a;
+    }
+
+    .logo {
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    .subtitle {
+      margin-top: 6px;
+      color: #9da8c0;
+    }
+
+    main {
+      max-width: 900px;
+      margin: auto;
+      padding: 25px 15px;
+    }
+
+    .welcome {
+      text-align: center;
+      padding: 35px 20px;
+    }
+
+    .welcome h1 {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+
+    .welcome p {
+      color: #aab4c9;
+      font-size: 16px;
+    }
+
+    .chat {
+      background: #11182b;
+      border: 1px solid #26304a;
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    #messages {
+      min-height: 350px;
+      max-height: 55vh;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .message {
+      margin-bottom: 15px;
+      padding: 14px;
+      border-radius: 12px;
+      line-height: 1.5;
+    }
+
+    .user {
+      background: #1d315c;
+      margin-left: 15%;
+    }
+
+    .ai {
+      background: #182033;
+      margin-right: 15%;
+    }
+
+    .input-area {
+      display: flex;
+      gap: 10px;
+      padding: 15px;
+      border-top: 1px solid #26304a;
+    }
+
+    textarea {
+      flex: 1;
+      resize: none;
+      min-height: 55px;
+      padding: 15px;
+      border-radius: 12px;
+      border: 1px solid #303b58;
+      background: #0b1020;
+      color: white;
+      outline: none;
+      font-size: 16px;
+    }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 0 22px;
+      background: #2563eb;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .status {
+      text-align: center;
+      padding: 10px;
+      color: #8f9bb3;
+      font-size: 13px;
+    }
+
+    @media (max-width: 600px) {
+      .welcome h1 {
+        font-size: 28px;
+      }
+
+      .user {
+        margin-left: 5%;
+      }
+
+      .ai {
+        margin-right: 5%;
+      }
+
+      .input-area {
+        flex-direction: column;
+      }
+
+      button {
+        height: 50px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">ALPH AI</div>
+  <div class="subtitle">Votre assistant intelligent</div>
+</header>
+
+<main>
+
+  <section class="welcome">
+    <h1>Bienvenue sur ALPH AI</h1>
+    <p>Posez votre question et commencez une conversation avec votre assistant.</p>
+  </section>
+
+  <section class="chat">
+
+    <div id="messages">
+      <div class="message ai">
+        <strong>ALPH AI :</strong><br>
+        Bonjour 👋 Je suis ALPH AI. Comment puis-je vous aider ?
+      </div>
+    </div>
+
+    <div class="input-area">
+      <textarea
+        id="messageInput"
+        placeholder="Écrivez votre message..."
+      ></textarea>
+
+      <button onclick="sendMessage()">
+        Envoyer
+      </button>
+    </div>
+
+    <div class="status" id="status">
+      ALPH AI prêt
+    </div>
+
+  </section>
+
+</main>
+
+<script>
+  const input = document.getElementById("messageInput");
+  const messages = document.getElementById("messages");
+  const status = document.getElementById("status");
+
+  input.addEventListener("keydown", function(event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  });
+
+  async function sendMessage() {
+    const text = input.value.trim();
+
+    if (!text) return;
+
+    addMessage("user", text);
+
+    input.value = "";
+    status.textContent = "ALPH AI réfléchit...";
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: text
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Erreur serveur");
+      }
+
+      const data = await response.json();
+
+      addMessage(
+        "ai",
+        data.reply || data.message || "Réponse reçue."
+      );
+
+      status.textContent = "ALPH AI prêt";
+
+    } catch (error) {
+
+      addMessage(
+        "ai",
+        "Le serveur ALPH AI n'est pas encore connecté."
+      );
+
+      status.textContent = "Connexion au moteur en attente";
+    }
+  }
+
+  function addMessage(type, text) {
+    const div = document.createElement("div");
+
+    div.className = "message " + type;
+
+    div.innerHTML =
+      "<strong>" +
+      (type === "user" ? "Vous" : "ALPH AI") +
+      " :</strong><br>" +
+      escapeHtml(text).replace(/\n/g, "<br>");
+
+    messages.appendChild(div);
+
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+</script>
+
+</body>
+</html>
