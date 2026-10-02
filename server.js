@@ -8,9 +8,13 @@ require("dotenv").config();
 
 const app = express();
 
-// ===============================
+// Render utilise un proxy
+app.set("trust proxy", 1);
+
+// =========================
 // BASE DE DONNÉES
-// ===============================
+// =========================
+
 const db = new Database(process.env.DB_PATH || "alph-ai.db");
 
 db.pragma("journal_mode = WAL");
@@ -46,14 +50,15 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 `);
 
-// ===============================
-// CORS
-// ===============================
+// =========================
+// CONFIGURATION
+// =========================
+
 const allowedOrigins = new Set([
+  "https://alph-ai-moteur.onrender.com",
   "https://bsslg.github.io",
   "http://localhost:3000",
   "http://localhost:5500",
-
   ...(process.env.FRONTEND_URL
     ? process.env.FRONTEND_URL
         .split(",")
@@ -62,10 +67,20 @@ const allowedOrigins = new Set([
     : [])
 ]);
 
+// =========================
+// CORS
+// =========================
+
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
+      // Autorise les requêtes sans Origin
+      // et les navigateurs utilisant le même serveur.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.has(origin)) {
         return callback(null, true);
       }
 
@@ -81,21 +96,16 @@ app.use(
   })
 );
 
-// ===============================
-// MIDDLEWARE
-// ===============================
+// =========================
+// EXPRESS
+// =========================
+
 app.use(express.json({ limit: "1mb" }));
 
-// ===============================
-// FICHIER INDEX
-// CORRECTION N°1
-// index.html est à la racine du dépôt
-// ===============================
-const INDEX_FILE = path.join(__dirname, "index.html");
-
-// ===============================
+// =========================
 // OPENAI
-// ===============================
+// =========================
+
 const ai = process.env.OPENAI_API_KEY
   ? new OpenAI({
       apiKey: process.env.OPENAI_API_KEY
@@ -104,11 +114,19 @@ const ai = process.env.OPENAI_API_KEY
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-6-luna";
 
-const ADMIN_KEY = process.env.ADMIN_KEY || "change-me";
+const ADMIN_KEY =
+  process.env.ADMIN_KEY || "change-me";
 
-// ===============================
-// AUTHENTIFICATION ADMIN
-// ===============================
+// =========================
+// FICHIER PRINCIPAL
+// =========================
+
+const INDEX_FILE = path.join(__dirname, "index.html");
+
+// =========================
+// ADMIN
+// =========================
+
 function admin(req, res, next) {
   if (req.headers["x-admin-key"] !== ADMIN_KEY) {
     return res.status(401).json({
@@ -119,9 +137,10 @@ function admin(req, res, next) {
   next();
 }
 
-// ===============================
+// =========================
 // HEALTH CHECK
-// ===============================
+// =========================
+
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
@@ -131,9 +150,10 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ===============================
+// =========================
 // UTILISATEURS
-// ===============================
+// =========================
+
 app.post("/api/users", (req, res) => {
   const { name, email } = req.body || {};
 
@@ -145,7 +165,9 @@ app.post("/api/users", (req, res) => {
 
   try {
     const cleanName = String(name).trim();
-    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanEmail = String(email)
+      .trim()
+      .toLowerCase();
 
     const result = db
       .prepare(
@@ -158,17 +180,17 @@ app.post("/api/users", (req, res) => {
       name: cleanName,
       email: cleanEmail
     });
-
-  } catch (e) {
+  } catch (error) {
     res.status(409).json({
       error: "Cet email existe déjà."
     });
   }
 });
 
-// ===============================
+// =========================
 // HISTORIQUE
-// ===============================
+// =========================
+
 app.get("/api/history/:userId", (req, res) => {
   const userId = Number(req.params.userId);
 
@@ -176,7 +198,7 @@ app.get("/api/history/:userId", (req, res) => {
     .prepare(
       `SELECT id, message, reply, created_at
        FROM chats
-       WHERE user_id = ?
+       WHERE user_id=?
        ORDER BY id DESC
        LIMIT 100`
     )
@@ -185,9 +207,10 @@ app.get("/api/history/:userId", (req, res) => {
   res.json(history);
 });
 
-// ===============================
+// =========================
 // CHAT ALPH AI
-// ===============================
+// =========================
+
 app.post("/api/chat", async (req, res) => {
   const message = String(
     req.body?.message || ""
@@ -206,7 +229,7 @@ app.post("/api/chat", async (req, res) => {
   if (!ai) {
     return res.status(503).json({
       error:
-        "Le moteur IA n'est pas configuré. Ajoutez OPENAI_API_KEY dans les variables d'environnement."
+        "Le moteur IA n'est pas disponible. Vérifiez OPENAI_API_KEY dans Render."
     });
   }
 
@@ -215,14 +238,25 @@ app.post("/api/chat", async (req, res) => {
       model: MODEL,
 
       instructions: `
-Tu es ALPH AI, un assistant francophone pratique et fiable, conçu notamment pour les utilisateurs en Guinée.
+Tu es ALPH AI, un assistant francophone pratique,
+fiable et intelligent, conçu notamment pour les
+utilisateurs en Guinée.
 
-Réponds clairement, utilement et sans inventer.
+Réponds clairement et utilement.
 
-Pour les actualités, prix, lois, démarches administratives ou informations susceptibles de changer, précise quand une vérification auprès d'une source officielle est nécessaire.
+N'invente jamais une information.
 
-Ne prétends jamais avoir effectué une action réelle si tu ne l'as pas faite.
-      `,
+Pour les actualités, prix, lois, démarches
+administratives ou informations susceptibles
+de changer, indique lorsqu'une vérification
+auprès d'une source officielle est nécessaire.
+
+Ne prétends jamais avoir effectué une action
+réelle si tu ne l'as pas faite.
+
+Tu peux répondre en français, simplement
+et naturellement.
+`,
 
       input: message
     });
@@ -231,10 +265,11 @@ Ne prétends jamais avoir effectué une action réelle si tu ne l'as pas faite.
       response.output_text ||
       "Je n'ai pas pu générer une réponse.";
 
+    // Sauvegarde de la conversation
     if (userId) {
       db.prepare(
-        `INSERT INTO chats(user_id, message, reply)
-         VALUES(?, ?, ?)`
+        `INSERT INTO chats(user_id,message,reply)
+         VALUES(?,?,?)`
       ).run(
         userId,
         message,
@@ -246,18 +281,24 @@ Ne prétends jamais avoir effectué une action réelle si tu ne l'as pas faite.
       reply
     });
 
-  } catch (e) {
-    console.error("Erreur OpenAI :", e);
+  } catch (error) {
+
+    console.error(
+      "Erreur OpenAI :",
+      error
+    );
 
     res.status(500).json({
-      error: "Erreur du moteur IA."
+      error:
+        "Erreur du moteur IA."
     });
   }
 });
 
-// ===============================
+// =========================
 // ALERTES
-// ===============================
+// =========================
+
 app.get("/api/alerts", (req, res) => {
   const alerts = db
     .prepare(
@@ -269,7 +310,8 @@ app.get("/api/alerts", (req, res) => {
 });
 
 app.post("/api/alerts", admin, (req, res) => {
-  const { title, body } = req.body || {};
+  const { title, body } =
+    req.body || {};
 
   if (!title || !body) {
     return res.status(400).json({
@@ -281,10 +323,7 @@ app.post("/api/alerts", admin, (req, res) => {
     .prepare(
       "INSERT INTO alerts(title,body) VALUES(?,?)"
     )
-    .run(
-      String(title).trim(),
-      String(body).trim()
-    );
+    .run(title, body);
 
   res.json({
     id: result.lastInsertRowid,
@@ -293,21 +332,27 @@ app.post("/api/alerts", admin, (req, res) => {
   });
 });
 
-app.delete("/api/alerts/:id", admin, (req, res) => {
-  db.prepare(
-    "DELETE FROM alerts WHERE id=?"
-  ).run(
-    Number(req.params.id)
-  );
+app.delete(
+  "/api/alerts/:id",
+  admin,
+  (req, res) => {
 
-  res.json({
-    ok: true
-  });
-});
+    db.prepare(
+      "DELETE FROM alerts WHERE id=?"
+    ).run(
+      Number(req.params.id)
+    );
 
-// ===============================
+    res.json({
+      ok: true
+    });
+  }
+);
+
+// =========================
 // DOCUMENTS
-// ===============================
+// =========================
+
 app.get("/api/documents", (req, res) => {
   const documents = db
     .prepare(
@@ -318,80 +363,92 @@ app.get("/api/documents", (req, res) => {
   res.json(documents);
 });
 
-app.post("/api/documents", admin, (req, res) => {
-  const { title, description } =
-    req.body || {};
+app.post(
+  "/api/documents",
+  admin,
+  (req, res) => {
 
-  if (!title || !description) {
-    return res.status(400).json({
-      error: "Titre et description requis."
+    const {
+      title,
+      description
+    } = req.body || {};
+
+    if (!title || !description) {
+      return res.status(400).json({
+        error:
+          "Titre et description requis."
+      });
+    }
+
+    const result = db
+      .prepare(
+        `INSERT INTO documents(title,description)
+         VALUES(?,?)`
+      )
+      .run(
+        title,
+        description
+      );
+
+    res.json({
+      id: result.lastInsertRowid,
+      title,
+      description
     });
   }
+);
 
-  const result = db
-    .prepare(
-      `INSERT INTO documents(title,description)
-       VALUES(?,?)`
-    )
-    .run(
-      String(title).trim(),
-      String(description).trim()
-    );
-
-  res.json({
-    id: result.lastInsertRowid,
-    title,
-    description
-  });
-});
-
-// ===============================
+// =========================
 // STATISTIQUES ADMIN
-// ===============================
-app.get("/api/stats", admin, (req, res) => {
-  res.json({
-    users: db
-      .prepare(
-        "SELECT COUNT(*) n FROM users"
-      )
-      .get().n,
+// =========================
 
-    chats: db
-      .prepare(
-        "SELECT COUNT(*) n FROM chats"
-      )
-      .get().n,
+app.get(
+  "/api/stats",
+  admin,
+  (req, res) => {
 
-    alerts: db
-      .prepare(
-        "SELECT COUNT(*) n FROM alerts"
-      )
-      .get().n,
+    res.json({
+      users: db
+        .prepare(
+          "SELECT COUNT(*) n FROM users"
+        )
+        .get().n,
 
-    documents: db
-      .prepare(
-        "SELECT COUNT(*) n FROM documents"
-      )
-      .get().n
-  });
-});
+      chats: db
+        .prepare(
+          "SELECT COUNT(*) n FROM chats"
+        )
+        .get().n,
 
-// ===============================
-// SERVIR INDEX.HTML
-// CORRECTION N°2
-//
-// On n'utilise plus app.get("*").
-// Cette syntaxe fonctionne avec les
-// versions récentes d'Express.
-// ===============================
+      alerts: db
+        .prepare(
+          "SELECT COUNT(*) n FROM alerts"
+        )
+        .get().n,
+
+      documents: db
+        .prepare(
+          "SELECT COUNT(*) n FROM documents"
+        )
+        .get().n
+    });
+  }
+);
+
+// =========================
+// PAGE ALPH AI
+// =========================
+
 app.get("/{*splat}", (req, res) => {
   res.sendFile(INDEX_FILE);
 });
 
-// ===============================
+// =========================
 // SERVEUR
-// ===============================
-const PORT = process.env.PORT || 3000;
+// =========================
+
+const PORT =
+  process.env.PORT || 3000;
 
 app.listen(
   PORT,
